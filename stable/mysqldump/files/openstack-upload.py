@@ -12,7 +12,7 @@ class Expando(object):
 def curl(args, shell=True, check=True, input=None, timeout_sec = 30, **kwargs):
     '''python3 subprocess.run() workalike with more appropriate defaults '''
 
-    args = 'curl ' + args
+    args = f'curl {args}'
     if VERBOSE: print("Run:\n  {}".format(args))
     p = subprocess.Popen(args, shell=shell, stdin=subprocess.PIPE if input else None, stdout=subprocess.PIPE, **kwargs)
 
@@ -38,7 +38,7 @@ def curl(args, shell=True, check=True, input=None, timeout_sec = 30, **kwargs):
 def upload(source, destination, ttl_days):
     try:
         auth_url = os.environ['OS_AUTH_URL'] + '/auth/tokens'
-        print('Getting authentication token from {} ...'.format(auth_url))
+        print(f'Getting authentication token from {auth_url} ...')
 
         auth_json = '''{{
             "auth": {{
@@ -70,15 +70,18 @@ def upload(source, destination, ttl_days):
     # check that it is valid
     json.loads(auth_json)
 
-    p = curl('--silent --show-error --include --header "Content-Type: application/json" --data @- {}'.format(auth_url),
-        input=auth_json.encode('utf-8'))
+    p = curl(
+        f'--silent --show-error --include --header "Content-Type: application/json" --data @- {auth_url}',
+        input=auth_json.encode('utf-8'),
+    )
+
 
     lines = [s.decode('utf-8') for s in p.stdout.splitlines()]
-    header_lines = lines[0:-2]
+    header_lines = lines[:-2]
     body = lines[-1]
 
     if p.returncode:
-        raise Exception("Failed to log in to Openstack at {}: exit code {}".format(auth_url, p))
+        raise Exception(f"Failed to log in to Openstack at {auth_url}: exit code {p}")
 
     if header_lines[0].split()[1] != '201':
         raise Exception("Failed to log in to Openstack at {}: {}\n{}".format(auth_url,  header_lines[0], body))
@@ -109,18 +112,21 @@ def upload(source, destination, ttl_days):
     if object_store_url is None:
         raise Exception("Failed to find object-store public endpoint URL in returned JSON:\n{}".format(body))
 
-    print("  {}".format(object_store_url))
+    print(f"  {object_store_url}")
 
-    full_destination_url = '{}/{}'.format(object_store_url, destination)
+    full_destination_url = f'{object_store_url}/{destination}'
 
     # Check container
     container_name = destination.split('/')[0]
-    container_url = object_store_url + "/" + container_name
-    print('Checking container: {} ...'.format(container_name))
-    p =curl('--fail --silent --show-error --head --header @- {}'.format(container_url),
-        input=auth_token_header)
+    container_url = f"{object_store_url}/{container_name}"
+    print(f'Checking container: {container_name} ...')
+    p = curl(
+        f'--fail --silent --show-error --head --header @- {container_url}',
+        input=auth_token_header,
+    )
+
     if not VERBOSE:
-        print("  {}".format(p.stdout.splitlines()[0]))
+        print(f"  {p.stdout.splitlines()[0]}")
 
     # Upload
     print('\nUploading\n  from: {}\n  to:   {}'.format(os.path.join(os.getcwd(), source), full_destination_url))
@@ -141,12 +147,12 @@ def upload(source, destination, ttl_days):
             found += 1
 
             local_file = os.path.join(abspath, f)
-            dest_url = (full_destination_url + '/' + path + '/' + f).replace('//', '/') # avoid double slash, screws up web UI
+            dest_url = f'{full_destination_url}/{path}/{f}'.replace('//', '/')
 
             if VERBOSE:
                 print ("\n{} ==> {}\n".format(local_file, dest_url))
             else:
-                print ('  {}'.format(local_file))
+                print(f'  {local_file}')
 
             try:
                 p = curl('--silent --show-error --head --header @- -o /dev/null --write-out "%{{http_code}}" {}'.format(dest_url),
@@ -158,15 +164,16 @@ def upload(source, destination, ttl_days):
 
                 print("    Uploading ...")
 
-                upload_args = '--silent --show-error --fail --request PUT --header @- --upload-file {} {}'.format(local_file, dest_url)
+                upload_args = f'--silent --show-error --fail --request PUT --header @- --upload-file {local_file} {dest_url}'
+
                 if ttl_days:
-                    upload_args += ' --header "X-Delete-After: {}"'.format(ttl_seconds)
+                    upload_args += f' --header "X-Delete-After: {ttl_seconds}"'
 
                 p = curl(upload_args, shell=True, check=True, timeout_sec=30*60, input=auth_token_header)
 
                 count += 1
             except Exception as e:
-                print ("ERROR: {}".format(e))
+                print(f"ERROR: {e}")
                 errs += 1
 
     print ('\nUploaded {} of {} file(s), {} failure(s)'.format(count, found, errs))
@@ -203,7 +210,7 @@ if __name__ == '__main__':
 
     for r in ['source', 'destination']:
         if not options.__dict__.get(r):
-            parser.error("parameter {} required".format(r))
+            parser.error(f"parameter {r} required")
 
 
     VERBOSE = options.verbose
